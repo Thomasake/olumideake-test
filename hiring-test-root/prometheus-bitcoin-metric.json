@@ -1,0 +1,1 @@
+{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"bitcoin_price","instance":"bitcoin-price-service:8000","job":"bitcoin-exporter"},"value":[1709085187.397,"56880.0515"]}]}}
