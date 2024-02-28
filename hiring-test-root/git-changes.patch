@@ -1,6 +1,5 @@
-
-m 83ef4716133d685d1f4074569e1d8dc1593f8df8 Mon Sep 17 00:00:00 2001
-From: Olumide Thomas Ake <Tomminad@gmail.com>
+From 83ef4716133d685d1f4074569e1d8dc1593f8df8 Mon Sep 17 00:00:00 2001
+From: thomaslifedesign <thomaslifedesign@gmail.com>
 Date: Mon, 26 Feb 2024 09:53:12 -0700
 Subject: [PATCH 01/13] Pushing the bitcoin_exporter.py
 
@@ -52,7 +51,7 @@ index 0000000..29990ea
 
 
 From a6d87d9d1ca5692f45628e9d946f997681ab7a53 Mon Sep 17 00:00:00 2001
-From: Olumide Thomas Ake <Tomminad@gmail.com>
+From: thomaslifedesign <thomaslifedesign@gmail.com>
 Date: Mon, 26 Feb 2024 09:55:19 -0700
 Subject: [PATCH 02/13] Pushing the dockerfile for bitcoin exporter
 
@@ -98,7 +97,7 @@ index 0000000..51e9e1b
 
 
 From 4c5bd10222d945ea83762df10ac57d5bb861110d Mon Sep 17 00:00:00 2001
-From: Olumide Thomas Ake <Tomminad@gmail.com>
+From: Thomas <thomas.olu@aylo.com>
 Date: Mon, 26 Feb 2024 10:39:40 -0700
 Subject: [PATCH 03/13] Adding the bitcoin deployment file
 
@@ -153,7 +152,7 @@ index 0000000..48d03c9
 
 
 From 4728fb6d66cb1b0ef3d27e1010c29645f1f26fca Mon Sep 17 00:00:00 2001
-From: Olumide Thomas Ake <Tomminad@gmail.com>
+From: Thomas <thomas.olu@aylo.com>
 Date: Mon, 26 Feb 2024 10:44:40 -0700
 Subject: [PATCH 04/13] Pushing files for installing prometheus
 
@@ -263,7 +262,7 @@ index 0000000..91f313b
 
 
 From 4de6a8a54758fa27baaba1bc7578e8f7b6532134 Mon Sep 17 00:00:00 2001
-From: Olumide Thomas Ake <Tomminad@gmail.com>
+From: Thomas <thomas.olu@aylo.com>
 Date: Mon, 26 Feb 2024 16:34:19 -0700
 Subject: [PATCH 05/13] Add docker-compose.yaml and push-commands
 
@@ -335,7 +334,7 @@ index 2e2bde2..152e8c3 100644
 
 
 From b28c34f38e6e6b655264d87855e5bd8f32019703 Mon Sep 17 00:00:00 2001
-From: Olumide Thomas Ake <Tomminad@gmail.com>
+From: Thomas <thomas.olu@aylo.com>
 Date: Tue, 27 Feb 2024 11:32:25 -0700
 Subject: [PATCH 08/13] submit-test
 
@@ -1644,7 +1643,7 @@ rename to git patch
 
 
 From aef8880336405804d08e230f1f3f7ca550eb2c39 Mon Sep 17 00:00:00 2001
-From: Olumide Thomas Ake <Tomminad@gmail.com>
+From: Thomas <thomas.olu@aylo.com>
 Date: Tue, 27 Feb 2024 17:00:45 -0700
 Subject: [PATCH 10/13] Include git-patch and any other relevant changes
 
@@ -1660,7 +1659,7 @@ index 0000000..e13020c
 +++ b/git-patch
 @@ -0,0 +1,1625 @@
 +From 83ef4716133d685d1f4074569e1d8dc1593f8df8 Mon Sep 17 00:00:00 2001
-+From: Olumide Thomas Ake <Tomminad@gmail.com>
++From: thomaslifedesign <thomaslifedesign@gmail.com>
 +Date: Mon, 26 Feb 2024 09:53:12 -0700
 +Subject: [PATCH 1/8] Pushing the bitcoin_exporter.py
 +
@@ -1712,7 +1711,7 @@ index 0000000..e13020c
 +
 +
 +From a6d87d9d1ca5692f45628e9d946f997681ab7a53 Mon Sep 17 00:00:00 2001
-+From: Olumide Thomas Ake <Tomminad@gmail.com>
++From: thomaslifedesign <thomaslifedesign@gmail.com>
 +Date: Mon, 26 Feb 2024 09:55:19 -0700
 +Subject: [PATCH 2/8] Pushing the dockerfile for bitcoin exporter
 +
@@ -1758,7 +1757,7 @@ index 0000000..e13020c
 +
 +
 +From 4c5bd10222d945ea83762df10ac57d5bb861110d Mon Sep 17 00:00:00 2001
-+From: Olumide Thomas Ake <Tomminad@gmail.com>
++From: Thomas <thomas.olu@aylo.com>
 +Date: Mon, 26 Feb 2024 10:39:40 -0700
 +Subject: [PATCH 3/8] Adding the bitcoin deployment file
 +
@@ -1813,7 +1812,7 @@ index 0000000..e13020c
 +
 +
 +From 4728fb6d66cb1b0ef3d27e1010c29645f1f26fca Mon Sep 17 00:00:00 2001
-+From: Olumide Thomas Ake <Tomminad@gmail.com>
++From: Thomas <thomas.olu@aylo.com>
 +Date: Mon, 26 Feb 2024 10:44:40 -0700
 +Subject: [PATCH 4/8] Pushing files for installing prometheus
 +
@@ -1923,7 +1922,7 @@ index 0000000..e13020c
 +
 +
 +From 4de6a8a54758fa27baaba1bc7578e8f7b6532134 Mon Sep 17 00:00:00 2001
-+From: Olumide Thomas Ake <Tomminad@gmail.com>
++From: Thomas <thomas.olu@aylo.com>
 +Date: Mon, 26 Feb 2024 16:34:19 -0700
 +Subject: [PATCH 5/8] Add docker-compose.yaml and push-commands
 +
@@ -1995,7 +1994,7 @@ index 0000000..e13020c
 +
 +
 +From b28c34f38e6e6b655264d87855e5bd8f32019703 Mon Sep 17 00:00:00 2001
-+From: Olumide Thomas Ake <Tomminad@gmail.com>
++From: Thomas <thomas.olu@aylo.com>
 +Date: Tue, 27 Feb 2024 11:32:25 -0700
 +Subject: [PATCH 8/8] submit-test
 +
@@ -3289,7 +3288,7 @@ index 0000000..e13020c
 
 
 From 6177a48e1b49db5b3e997e39996a9f7f0fcd3aa6 Mon Sep 17 00:00:00 2001
-From: Olumide Thomas Ake <Tomminad@gmail.com>
+From: Thomas <thomas.olu@aylo.com>
 Date: Tue, 27 Feb 2024 17:06:38 -0700
 Subject: [PATCH 11/13] Add git-changes.patch for reference
 
@@ -3328,7 +3327,7 @@ index 0000000..c8f7540
 
 
 From 5a41abf7a24c9a2a7007da71fce1ea45fc3c3289 Mon Sep 17 00:00:00 2001
-From: Olumide Thomas Ake <Tomminad@gmail.com>
+From: Thomas <thomas.olu@aylo.com>
 Date: Tue, 27 Feb 2024 17:42:01 -0700
 Subject: [PATCH 12/13] update git patch
 
@@ -5553,7 +5552,7 @@ index db9d606..0000000
 
 
 From c49fca96a1126bb7b7a610a8e6afdfa7897fbff9 Mon Sep 17 00:00:00 2001
-From: Olumide Thomas Ake <Tomminad@gmail.com>
+From: Thomas <thomas.olu@aylo.com>
 Date: Tue, 27 Feb 2024 18:03:50 -0700
 Subject: [PATCH 13/13] Add git-changes.patch for reference
 
@@ -8288,5 +8287,4 @@ KX?}YENCN-_I=i+2
 
 -- 
 2.34.1
-
 
