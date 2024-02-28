@@ -1,0 +1,1625 @@
+From 83ef4716133d685d1f4074569e1d8dc1593f8df8 Mon Sep 17 00:00:00 2001
+From: thomaslifedesign <thomaslifedesign@gmail.com>
+Date: Mon, 26 Feb 2024 09:53:12 -0700
+Subject: [PATCH 1/8] Pushing the bitcoin_exporter.py
+
+---
+ bitcoin_exporter.py | 32 ++++++++++++++++++++++++++++++++
+ 1 file changed, 32 insertions(+)
+ create mode 100644 bitcoin_exporter.py
+
+diff --git a/bitcoin_exporter.py b/bitcoin_exporter.py
+new file mode 100644
+index 0000000..29990ea
+--- /dev/null
++++ b/bitcoin_exporter.py
+@@ -0,0 +1,32 @@
++from prometheus_client import start_http_server, Gauge
++import requests
++import time
++
++# Define a Prometheus Gauge metric
++bitcoin_price_metric = Gauge('bitcoin_price', 'Current price of Bitcoin in USD')
++
++# Function to fetch Bitcoin price from Coindesk API
++def fetch_bitcoin_price():
++    try:
++        response = requests.get('https://api.coindesk.com/v1/bpi/currentprice.json')
++        data = response.json()
++        price = data['bpi']['USD']['rate_float']
++        return price
++    except Exception as e:
++        print(f"Error fetching Bitcoin price: {e}")
++        return None
++
++# Function to update the Prometheus metric with the current Bitcoin price
++def update_bitcoin_price_metric():
++    price = fetch_bitcoin_price()
++    if price is not None:
++        bitcoin_price_metric.set(price)
++
++if __name__ == '__main__':
++    # Start the Prometheus HTTP server on port 8000
++    start_http_server(8000)
++    
++    # Periodically update the Bitcoin price metric
++    while True:
++        update_bitcoin_price_metric()
++        time.sleep(60)  # Update every 60 seconds
+-- 
+2.34.1
+
+
+From a6d87d9d1ca5692f45628e9d946f997681ab7a53 Mon Sep 17 00:00:00 2001
+From: thomaslifedesign <thomaslifedesign@gmail.com>
+Date: Mon, 26 Feb 2024 09:55:19 -0700
+Subject: [PATCH 2/8] Pushing the dockerfile for bitcoin exporter
+
+---
+ Dockerfile      | 14 ++++++++++++++
+ requirement.txt |  2 ++
+ 2 files changed, 16 insertions(+)
+ create mode 100644 Dockerfile
+ create mode 100644 requirement.txt
+
+diff --git a/Dockerfile b/Dockerfile
+new file mode 100644
+index 0000000..b09e5cf
+--- /dev/null
++++ b/Dockerfile
+@@ -0,0 +1,14 @@
++# Use an official Python runtime as a parent image
++FROM python:3.8-slim
++
++# Set the working directory to /app
++WORKDIR /app
++
++# Copy the current directory contents into the container at /app
++COPY . /app
++
++# Install any needed packages specified in requirements.txt
++RUN pip install --no-cache-dir -r requirement.txt
++
++# Run app.py when the container launches
++CMD ["python", "./bitcoin_exporter.py"]
+\ No newline at end of file
+diff --git a/requirement.txt b/requirement.txt
+new file mode 100644
+index 0000000..51e9e1b
+--- /dev/null
++++ b/requirement.txt
+@@ -0,0 +1,2 @@
++prometheus_client==0.11.0
++requests==2.26.0
+\ No newline at end of file
+-- 
+2.34.1
+
+
+From 4c5bd10222d945ea83762df10ac57d5bb861110d Mon Sep 17 00:00:00 2001
+From: Thomas <thomas.olu@aylo.com>
+Date: Mon, 26 Feb 2024 10:39:40 -0700
+Subject: [PATCH 3/8] Adding the bitcoin deployment file
+
+---
+ kubernetes/deployment.yaml | 34 ++++++++++++++++++++++++++++++++++
+ 1 file changed, 34 insertions(+)
+ create mode 100644 kubernetes/deployment.yaml
+
+diff --git a/kubernetes/deployment.yaml b/kubernetes/deployment.yaml
+new file mode 100644
+index 0000000..48d03c9
+--- /dev/null
++++ b/kubernetes/deployment.yaml
+@@ -0,0 +1,34 @@
++#Deployment
++apiVersion: apps/v1
++kind: Deployment
++metadata:
++  name: bitcoin-price-app
++spec:
++  replicas: 1
++  selector:
++    matchLabels:
++      app: bitcoin-price-app
++  template:
++    metadata:
++      labels:
++        app: bitcoin-price-app
++    spec:
++      containers:
++        - name: bitcoin-price-container
++          image: localhost:5000/bitcoin_exporter:latest  
++          ports:
++            - containerPort: 8000
++#Service
++---
++apiVersion: v1
++kind: Service
++metadata:
++  name: bitcoin-price-service
++spec:
++  selector:
++    app: bitcoin-price-app
++  ports:
++    - protocol: TCP
++      port: 8000
++      targetPort: 8000
++  type: NodePort
+\ No newline at end of file
+-- 
+2.34.1
+
+
+From 4728fb6d66cb1b0ef3d27e1010c29645f1f26fca Mon Sep 17 00:00:00 2001
+From: Thomas <thomas.olu@aylo.com>
+Date: Mon, 26 Feb 2024 10:44:40 -0700
+Subject: [PATCH 4/8] Pushing files for installing prometheus
+
+---
+ .../prometheus/prometheus-configmap.yaml      | 12 +++++++++
+ .../prometheus/prometheus-deployment.yaml     | 26 +++++++++++++++++++
+ kubernetes/prometheus/prometheus-ingress.yaml | 16 ++++++++++++
+ kubernetes/prometheus/prometheus-service.yaml | 12 +++++++++
+ 4 files changed, 66 insertions(+)
+ create mode 100644 kubernetes/prometheus/prometheus-configmap.yaml
+ create mode 100644 kubernetes/prometheus/prometheus-deployment.yaml
+ create mode 100644 kubernetes/prometheus/prometheus-ingress.yaml
+ create mode 100644 kubernetes/prometheus/prometheus-service.yaml
+
+diff --git a/kubernetes/prometheus/prometheus-configmap.yaml b/kubernetes/prometheus/prometheus-configmap.yaml
+new file mode 100644
+index 0000000..79847a0
+--- /dev/null
++++ b/kubernetes/prometheus/prometheus-configmap.yaml
+@@ -0,0 +1,12 @@
++apiVersion: v1
++kind: ConfigMap
++metadata:
++  name: prometheus-config
++data:
++  prometheus.yml: |
++    global:
++      scrape_interval: 15s
++    scrape_configs:
++      - job_name: 'bitcoin-exporter'
++        static_configs:
++          - targets: ['bitcoin-price-service:8000']
+diff --git a/kubernetes/prometheus/prometheus-deployment.yaml b/kubernetes/prometheus/prometheus-deployment.yaml
+new file mode 100644
+index 0000000..03ef76a
+--- /dev/null
++++ b/kubernetes/prometheus/prometheus-deployment.yaml
+@@ -0,0 +1,26 @@
++apiVersion: apps/v1
++kind: Deployment
++metadata:
++  name: prometheus-deployment
++spec:
++  replicas: 1
++  selector:
++    matchLabels:
++      app: prometheus
++  template:
++    metadata:
++      labels:
++        app: prometheus
++    spec:
++      containers:
++        - name: prometheus
++          image: prom/prometheus:latest
++          ports:
++            - containerPort: 9090
++          volumeMounts:
++            - name: prometheus-config-volume
++              mountPath: /etc/prometheus
++      volumes:
++        - name: prometheus-config-volume
++          configMap:
++            name: prometheus-config
+diff --git a/kubernetes/prometheus/prometheus-ingress.yaml b/kubernetes/prometheus/prometheus-ingress.yaml
+new file mode 100644
+index 0000000..4af06ed
+--- /dev/null
++++ b/kubernetes/prometheus/prometheus-ingress.yaml
+@@ -0,0 +1,16 @@
++apiVersion: networking.k8s.io/v1
++kind: Ingress
++metadata:
++  name: prometheus-ingress
++spec:
++  rules:
++    - host: localhost
++      http:
++        paths:
++          - path: /
++            pathType: Prefix
++            backend:
++              service:
++                name: prometheus-service
++                port:
++                  number: 9090
+diff --git a/kubernetes/prometheus/prometheus-service.yaml b/kubernetes/prometheus/prometheus-service.yaml
+new file mode 100644
+index 0000000..91f313b
+--- /dev/null
++++ b/kubernetes/prometheus/prometheus-service.yaml
+@@ -0,0 +1,12 @@
++apiVersion: v1
++kind: Service
++metadata:
++  name: prometheus-service
++spec:
++  selector:
++    app: prometheus
++  ports:
++    - protocol: TCP
++      port: 9090
++      targetPort: 9090
++  type: NodePort
+-- 
+2.34.1
+
+
+From 4de6a8a54758fa27baaba1bc7578e8f7b6532134 Mon Sep 17 00:00:00 2001
+From: Thomas <thomas.olu@aylo.com>
+Date: Mon, 26 Feb 2024 16:34:19 -0700
+Subject: [PATCH 5/8] Add docker-compose.yaml and push-commands
+
+---
+ docker-image/docker-compose.yaml | 18 ++++++++++++++++++
+ docker-image/push-commands       |  2 ++
+ 2 files changed, 20 insertions(+)
+ create mode 100644 docker-image/docker-compose.yaml
+ create mode 100644 docker-image/push-commands
+
+diff --git a/docker-image/docker-compose.yaml b/docker-image/docker-compose.yaml
+new file mode 100644
+index 0000000..8287078
+--- /dev/null
++++ b/docker-image/docker-compose.yaml
+@@ -0,0 +1,18 @@
++version: '3'
++
++services:
++  registry:
++    image: registry
++    container_name: my-registry
++    ports:
++      - "5000:5000"
++    restart: always
++
++  bitcoin-exporter:
++    build:
++      context: /root/olumideake-test/  # Replace with the path to your bitcoin-exporter Dockerfile and source code
++    image: bitcoin_exporter:latest
++    container_name: bitcoin-exporter
++    depends_on:
++      - registry
++    restart: always
+diff --git a/docker-image/push-commands b/docker-image/push-commands
+new file mode 100644
+index 0000000..2e2bde2
+--- /dev/null
++++ b/docker-image/push-commands
+@@ -0,0 +1,2 @@
++docker tag bitcoin_exporter:latest my-registry:5000/bitcoin_exporter:latest
++docker push my-registry:5000/bitcoin_exporter:latest
+\ No newline at end of file
+-- 
+2.34.1
+
+
+From 33f3f526a75c093d067e1e0151ccf8a806e11fb3 Mon Sep 17 00:00:00 2001
+From: Thomasake <158650919+Thomasake@users.noreply.github.com>
+Date: Mon, 26 Feb 2024 16:58:43 -0700
+Subject: [PATCH 6/8] Update push-commands
+
+---
+ docker-image/push-commands | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/docker-image/push-commands b/docker-image/push-commands
+index 2e2bde2..152e8c3 100644
+--- a/docker-image/push-commands
++++ b/docker-image/push-commands
+@@ -1,2 +1,2 @@
+-docker tag bitcoin_exporter:latest my-registry:5000/bitcoin_exporter:latest
+-docker push my-registry:5000/bitcoin_exporter:latest
+\ No newline at end of file
++docker tag bitcoin_exporter:latest localhost:5000/bitcoin_exporter:latest
++docker push localhost:5000/bitcoin_exporter:latest
+-- 
+2.34.1
+
+
+From b28c34f38e6e6b655264d87855e5bd8f32019703 Mon Sep 17 00:00:00 2001
+From: Thomas <thomas.olu@aylo.com>
+Date: Tue, 27 Feb 2024 11:32:25 -0700
+Subject: [PATCH 8/8] submit-test
+
+---
+ submit/hiring-test-root.tar.gz                | Bin 0 -> 7762 bytes
+ .../hiring-test-root/kubectl-deployments.txt  | 319 ++++++++
+ submit/hiring-test-root/kubectl-pods.txt      | 736 ++++++++++++++++++
+ .../prometheus-bitcoin-metric.json            |   1 +
+ .../prometheus-random-metric.json             |   1 +
+ submit/submit.sh                              |  19 +
+ 6 files changed, 1076 insertions(+)
+ create mode 100644 submit/hiring-test-root.tar.gz
+ create mode 100644 submit/hiring-test-root/kubectl-deployments.txt
+ create mode 100644 submit/hiring-test-root/kubectl-pods.txt
+ create mode 100644 submit/hiring-test-root/prometheus-bitcoin-metric.json
+ create mode 100644 submit/hiring-test-root/prometheus-random-metric.json
+ create mode 100644 submit/submit.sh
+
+diff --git a/submit/hiring-test-root.tar.gz b/submit/hiring-test-root.tar.gz
+new file mode 100644
+index 0000000000000000000000000000000000000000..f9d7cb2b5070c4eb8dfbe96be0daeab83d0d5fc1
+GIT binary patch
+literal 7762
+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
+YWXX~xOO`BIvV4>BH+Huk&j9cM0E-MllK=n!
+
+literal 0
+HcmV?d00001
+
+diff --git a/submit/hiring-test-root/kubectl-deployments.txt b/submit/hiring-test-root/kubectl-deployments.txt
+new file mode 100644
+index 0000000..41ee8ed
+--- /dev/null
++++ b/submit/hiring-test-root/kubectl-deployments.txt
+@@ -0,0 +1,319 @@
++Name:                   local-path-provisioner
++Namespace:              kube-system
++CreationTimestamp:      Tue, 27 Feb 2024 11:13:55 -0700
++Labels:                 objectset.rio.cattle.io/hash=183f35c65ffbc3064603f43f1580d8c68a2dabd4
++Annotations:            deployment.kubernetes.io/revision: 1
++                        objectset.rio.cattle.io/applied:
++                          H4sIAAAAAAAA/6xU3W7yRhB9lWqubQMfBCFLvUBJqlZNCEqU3kSoGtZj2LDeXe0Obizkd68Gm/yoIWmlXnl/Zs6emXPGB0Cv/6AQtbOQA3ofB/UIEthpW0AOV+SNayqyDAlUxFggI+...
++                        objectset.rio.cattle.io/id: 
++                        objectset.rio.cattle.io/owner-gvk: k3s.cattle.io/v1, Kind=Addon
++                        objectset.rio.cattle.io/owner-name: local-storage
++                        objectset.rio.cattle.io/owner-namespace: kube-system
++Selector:               app=local-path-provisioner
++Replicas:               1 desired | 1 updated | 1 total | 1 available | 0 unavailable
++StrategyType:           RollingUpdate
++MinReadySeconds:        0
++RollingUpdateStrategy:  1 max unavailable, 25% max surge
++Pod Template:
++  Labels:           app=local-path-provisioner
++  Service Account:  local-path-provisioner-service-account
++  Containers:
++   local-path-provisioner:
++    Image:      rancher/local-path-provisioner:v0.0.24
++    Port:       <none>
++    Host Port:  <none>
++    Command:
++      local-path-provisioner
++      start
++      --config
++      /etc/config/config.json
++    Environment:
++      POD_NAMESPACE:   (v1:metadata.namespace)
++    Mounts:
++      /etc/config/ from config-volume (rw)
++  Volumes:
++   config-volume:
++    Type:               ConfigMap (a volume populated by a ConfigMap)
++    Name:               local-path-config
++    Optional:           false
++  Priority Class Name:  system-node-critical
++Conditions:
++  Type           Status  Reason
++  ----           ------  ------
++  Available      True    MinimumReplicasAvailable
++  Progressing    True    NewReplicaSetAvailable
++OldReplicaSets:  <none>
++NewReplicaSet:   local-path-provisioner-84db5d44d9 (1/1 replicas created)
++Events:
++  Type    Reason             Age    From                   Message
++  ----    ------             ----   ----                   -------
++  Normal  ScalingReplicaSet  9m13s  deployment-controller  Scaled up replica set local-path-provisioner-84db5d44d9 to 1
++
++
++Name:                   coredns
++Namespace:              kube-system
++CreationTimestamp:      Tue, 27 Feb 2024 11:13:55 -0700
++Labels:                 k8s-app=kube-dns
++                        kubernetes.io/name=CoreDNS
++                        objectset.rio.cattle.io/hash=bce283298811743a0386ab510f2f67ef74240c57
++Annotations:            deployment.kubernetes.io/revision: 1
++                        objectset.rio.cattle.io/applied:
++                          H4sIAAAAAAAA/6xVQW/bOBP9Kx/mLMVW0jaugO/QtbPboq3XqJNeCqOgqZHFNcXhkiMnRqD/vhjJduw2TdrFniyTb4ZvHucN70F58xlDNOQgB+V9HGwySGBtXAE5TNBb2tboGBKokV...
++                        objectset.rio.cattle.io/id: 
++                        objectset.rio.cattle.io/owner-gvk: k3s.cattle.io/v1, Kind=Addon
++                        objectset.rio.cattle.io/owner-name: coredns
++                        objectset.rio.cattle.io/owner-namespace: kube-system
++Selector:               k8s-app=kube-dns
++Replicas:               1 desired | 1 updated | 1 total | 1 available | 0 unavailable
++StrategyType:           RollingUpdate
++MinReadySeconds:        0
++RollingUpdateStrategy:  1 max unavailable, 25% max surge
++Pod Template:
++  Labels:           k8s-app=kube-dns
++  Service Account:  coredns
++  Containers:
++   coredns:
++    Image:       rancher/mirrored-coredns-coredns:1.10.1
++    Ports:       53/UDP, 53/TCP, 9153/TCP
++    Host Ports:  0/UDP, 0/TCP, 0/TCP
++    Args:
++      -conf
++      /etc/coredns/Corefile
++    Limits:
++      memory:  170Mi
++    Requests:
++      cpu:        100m
++      memory:     70Mi
++    Liveness:     http-get http://:8080/health delay=60s timeout=1s period=10s #success=1 #failure=3
++    Readiness:    http-get http://:8181/ready delay=0s timeout=1s period=2s #success=1 #failure=3
++    Environment:  <none>
++    Mounts:
++      /etc/coredns from config-volume (ro)
++      /etc/coredns/custom from custom-config-volume (ro)
++  Volumes:
++   config-volume:
++    Type:      ConfigMap (a volume populated by a ConfigMap)
++    Name:      coredns
++    Optional:  false
++   custom-config-volume:
++    Type:                       ConfigMap (a volume populated by a ConfigMap)
++    Name:                       coredns-custom
++    Optional:                   true
++  Topology Spread Constraints:  kubernetes.io/hostname:DoNotSchedule when max skew 1 is exceeded for selector k8s-app=kube-dns
++  Priority Class Name:          system-cluster-critical
++Conditions:
++  Type           Status  Reason
++  ----           ------  ------
++  Available      True    MinimumReplicasAvailable
++  Progressing    True    NewReplicaSetAvailable
++OldReplicaSets:  <none>
++NewReplicaSet:   coredns-6799fbcd5 (1/1 replicas created)
++Events:
++  Type    Reason             Age    From                   Message
++  ----    ------             ----   ----                   -------
++  Normal  ScalingReplicaSet  9m13s  deployment-controller  Scaled up replica set coredns-6799fbcd5 to 1
++
++
++Name:                   metrics-server
++Namespace:              kube-system
++CreationTimestamp:      Tue, 27 Feb 2024 11:13:56 -0700
++Labels:                 k8s-app=metrics-server
++                        objectset.rio.cattle.io/hash=e10e245e13e46a725c9dddd4f9eb239f147774fd
++Annotations:            deployment.kubernetes.io/revision: 1
++                        objectset.rio.cattle.io/applied:
++                          H4sIAAAAAAAA/6xV3W4bNxN9lQ9zvWvv6sdOFtCFIOuLgjqOECktisAQKO5IYsUlWc6sYtXQuxezaztKHcVp0BthRR4enjkznLkHFcyvGMl4BwWoEOh8l0MCW+NKKOAKg/X7Ch1DAh...
++                        objectset.rio.cattle.io/id: 
++                        objectset.rio.cattle.io/owner-gvk: k3s.cattle.io/v1, Kind=Addon
++                        objectset.rio.cattle.io/owner-name: metrics-server-deployment
++                        objectset.rio.cattle.io/owner-namespace: kube-system
++Selector:               k8s-app=metrics-server
++Replicas:               1 desired | 1 updated | 1 total | 1 available | 0 unavailable
++StrategyType:           RollingUpdate
++MinReadySeconds:        0
++RollingUpdateStrategy:  1 max unavailable, 25% max surge
++Pod Template:
++  Labels:           k8s-app=metrics-server
++  Service Account:  metrics-server
++  Containers:
++   metrics-server:
++    Image:      rancher/mirrored-metrics-server:v0.6.3
++    Port:       10250/TCP
++    Host Port:  0/TCP
++    Args:
++      --cert-dir=/tmp
++      --secure-port=10250
++      --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
++      --kubelet-use-node-status-port
++      --metric-resolution=15s
++      --tls-cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305
++    Requests:
++      cpu:        100m
++      memory:     70Mi
++    Liveness:     http-get https://:https/livez delay=60s timeout=1s period=10s #success=1 #failure=3
++    Readiness:    http-get https://:https/readyz delay=0s timeout=1s period=2s #success=1 #failure=3
++    Environment:  <none>
++    Mounts:
++      /tmp from tmp-dir (rw)
++  Volumes:
++   tmp-dir:
++    Type:               EmptyDir (a temporary directory that shares a pod's lifetime)
++    Medium:             
++    SizeLimit:          <unset>
++  Priority Class Name:  system-node-critical
++Conditions:
++  Type           Status  Reason
++  ----           ------  ------
++  Available      True    MinimumReplicasAvailable
++  Progressing    True    NewReplicaSetAvailable
++OldReplicaSets:  <none>
++NewReplicaSet:   metrics-server-67c658944b (1/1 replicas created)
++Events:
++  Type    Reason             Age    From                   Message
++  ----    ------             ----   ----                   -------
++  Normal  ScalingReplicaSet  9m13s  deployment-controller  Scaled up replica set metrics-server-67c658944b to 1
++
++
++Name:                   traefik
++Namespace:              kube-system
++CreationTimestamp:      Tue, 27 Feb 2024 11:14:46 -0700
++Labels:                 app.kubernetes.io/instance=traefik-kube-system
++                        app.kubernetes.io/managed-by=Helm
++                        app.kubernetes.io/name=traefik
++                        helm.sh/chart=traefik-25.0.2_up25.0.0
++Annotations:            deployment.kubernetes.io/revision: 1
++                        meta.helm.sh/release-name: traefik
++                        meta.helm.sh/release-namespace: kube-system
++Selector:               app.kubernetes.io/instance=traefik-kube-system,app.kubernetes.io/name=traefik
++Replicas:               1 desired | 1 updated | 1 total | 1 available | 0 unavailable
++StrategyType:           RollingUpdate
++MinReadySeconds:        0
++RollingUpdateStrategy:  0 max unavailable, 1 max surge
++Pod Template:
++  Labels:           app.kubernetes.io/instance=traefik-kube-system
++                    app.kubernetes.io/managed-by=Helm
++                    app.kubernetes.io/name=traefik
++                    helm.sh/chart=traefik-25.0.2_up25.0.0
++  Annotations:      prometheus.io/path: /metrics
++                    prometheus.io/port: 9100
++                    prometheus.io/scrape: true
++  Service Account:  traefik
++  Containers:
++   traefik:
++    Image:       rancher/mirrored-library-traefik:2.10.5
++    Ports:       9100/TCP, 9000/TCP, 8000/TCP, 8443/TCP
++    Host Ports:  0/TCP, 0/TCP, 0/TCP, 0/TCP
++    Args:
++      --global.checknewversion
++      --global.sendanonymoususage
++      --entrypoints.metrics.address=:9100/tcp
++      --entrypoints.traefik.address=:9000/tcp
++      --entrypoints.web.address=:8000/tcp
++      --entrypoints.websecure.address=:8443/tcp
++      --api.dashboard=true
++      --ping=true
++      --metrics.prometheus=true
++      --metrics.prometheus.entrypoint=metrics
++      --providers.kubernetescrd
++      --providers.kubernetesingress
++      --providers.kubernetesingress.ingressendpoint.publishedservice=kube-system/traefik
++      --entrypoints.websecure.http.tls=true
++    Liveness:   http-get http://:9000/ping delay=2s timeout=2s period=10s #success=1 #failure=3
++    Readiness:  http-get http://:9000/ping delay=2s timeout=2s period=10s #success=1 #failure=1
++    Environment:
++      POD_NAME:        (v1:metadata.name)
++      POD_NAMESPACE:   (v1:metadata.namespace)
++    Mounts:
++      /data from data (rw)
++      /tmp from tmp (rw)
++  Volumes:
++   data:
++    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
++    Medium:     
++    SizeLimit:  <unset>
++   tmp:
++    Type:               EmptyDir (a temporary directory that shares a pod's lifetime)
++    Medium:             
++    SizeLimit:          <unset>
++  Priority Class Name:  system-cluster-critical
++Conditions:
++  Type           Status  Reason
++  ----           ------  ------
++  Available      True    MinimumReplicasAvailable
++  Progressing    True    NewReplicaSetAvailable
++OldReplicaSets:  <none>
++NewReplicaSet:   traefik-f4564c4f4 (1/1 replicas created)
++Events:
++  Type    Reason             Age    From                   Message
++  ----    ------             ----   ----                   -------
++  Normal  ScalingReplicaSet  8m34s  deployment-controller  Scaled up replica set traefik-f4564c4f4 to 1
++
++
++Name:                   bitcoin-price-app
++Namespace:              default
++CreationTimestamp:      Tue, 27 Feb 2024 11:17:35 -0700
++Labels:                 <none>
++Annotations:            deployment.kubernetes.io/revision: 1
++Selector:               app=bitcoin-price-app
++Replicas:               1 desired | 1 updated | 1 total | 1 available | 0 unavailable
++StrategyType:           RollingUpdate
++MinReadySeconds:        0
++RollingUpdateStrategy:  25% max unavailable, 25% max surge
++Pod Template:
++  Labels:  app=bitcoin-price-app
++  Containers:
++   bitcoin-price-container:
++    Image:        thomaslifedesign/bitcoin_exporter
++    Port:         8000/TCP
++    Host Port:    0/TCP
++    Environment:  <none>
++    Mounts:       <none>
++  Volumes:        <none>
++Conditions:
++  Type           Status  Reason
++  ----           ------  ------
++  Available      True    MinimumReplicasAvailable
++  Progressing    True    NewReplicaSetAvailable
++OldReplicaSets:  <none>
++NewReplicaSet:   bitcoin-price-app-69f9f994c9 (1/1 replicas created)
++Events:
++  Type    Reason             Age    From                   Message
++  ----    ------             ----   ----                   -------
++  Normal  ScalingReplicaSet  5m45s  deployment-controller  Scaled up replica set bitcoin-price-app-69f9f994c9 to 1
++
++
++Name:                   prometheus-deployment
++Namespace:              default
++CreationTimestamp:      Tue, 27 Feb 2024 11:19:28 -0700
++Labels:                 <none>
++Annotations:            deployment.kubernetes.io/revision: 1
++Selector:               app=prometheus
++Replicas:               1 desired | 1 updated | 1 total | 1 available | 0 unavailable
++StrategyType:           RollingUpdate
++MinReadySeconds:        0
++RollingUpdateStrategy:  25% max unavailable, 25% max surge
++Pod Template:
++  Labels:  app=prometheus
++  Containers:
++   prometheus:
++    Image:        prom/prometheus:latest
++    Port:         9090/TCP
++    Host Port:    0/TCP
++    Environment:  <none>
++    Mounts:
++      /etc/prometheus from prometheus-config-volume (rw)
++  Volumes:
++   prometheus-config-volume:
++    Type:      ConfigMap (a volume populated by a ConfigMap)
++    Name:      prometheus-config
++    Optional:  false
++Conditions:
++  Type           Status  Reason
++  ----           ------  ------
++  Available      True    MinimumReplicasAvailable
++  Progressing    True    NewReplicaSetAvailable
++OldReplicaSets:  <none>
++NewReplicaSet:   prometheus-deployment-6454fcc569 (1/1 replicas created)
++Events:
++  Type    Reason             Age    From                   Message
++  ----    ------             ----   ----                   -------
++  Normal  ScalingReplicaSet  3m52s  deployment-controller  Scaled up replica set prometheus-deployment-6454fcc569 to 1
+diff --git a/submit/hiring-test-root/kubectl-pods.txt b/submit/hiring-test-root/kubectl-pods.txt
+new file mode 100644
+index 0000000..f8e9e25
+--- /dev/null
++++ b/submit/hiring-test-root/kubectl-pods.txt
+@@ -0,0 +1,736 @@
++Name:                 local-path-provisioner-84db5d44d9-pkp5r
++Namespace:            kube-system
++Priority:             2000001000
++Priority Class Name:  system-node-critical
++Service Account:      local-path-provisioner-service-account
++Node:                 mtl-w-4brym13/172.26.138.62
++Start Time:           Tue, 27 Feb 2024 11:14:07 -0700
++Labels:               app=local-path-provisioner
++                      pod-template-hash=84db5d44d9
++Annotations:          <none>
++Status:               Running
++IP:                   10.42.0.3
++IPs:
++  IP:           10.42.0.3
++Controlled By:  ReplicaSet/local-path-provisioner-84db5d44d9
++Containers:
++  local-path-provisioner:
++    Container ID:  containerd://4039027c0401fddd6082135e023df2181eb81e4650d4caecc34052601448e66a
++    Image:         rancher/local-path-provisioner:v0.0.24
++    Image ID:      docker.io/rancher/local-path-provisioner@sha256:5bb33992a4ec3034c28b5e0b3c4c2ac35d3613b25b79455eb4b1a95adc82cdc0
++    Port:          <none>
++    Host Port:     <none>
++    Command:
++      local-path-provisioner
++      start
++      --config
++      /etc/config/config.json
++    State:          Running
++      Started:      Tue, 27 Feb 2024 11:14:16 -0700
++    Ready:          True
++    Restart Count:  0
++    Environment:
++      POD_NAMESPACE:  kube-system (v1:metadata.namespace)
++    Mounts:
++      /etc/config/ from config-volume (rw)
++      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-ntxrz (ro)
++Conditions:
++  Type              Status
++  Initialized       True 
++  Ready             True 
++  ContainersReady   True 
++  PodScheduled      True 
++Volumes:
++  config-volume:
++    Type:      ConfigMap (a volume populated by a ConfigMap)
++    Name:      local-path-config
++    Optional:  false
++  kube-api-access-ntxrz:
++    Type:                    Projected (a volume that contains injected data from multiple sources)
++    TokenExpirationSeconds:  3607
++    ConfigMapName:           kube-root-ca.crt
++    ConfigMapOptional:       <nil>
++    DownwardAPI:             true
++QoS Class:                   BestEffort
++Node-Selectors:              <none>
++Tolerations:                 CriticalAddonsOnly op=Exists
++                             node-role.kubernetes.io/control-plane:NoSchedule op=Exists
++                             node-role.kubernetes.io/master:NoSchedule op=Exists
++                             node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
++                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
++Events:
++  Type    Reason     Age    From               Message
++  ----    ------     ----   ----               -------
++  Normal  Scheduled  9m12s  default-scheduler  Successfully assigned kube-system/local-path-provisioner-84db5d44d9-pkp5r to mtl-w-4brym13
++  Normal  Pulling    9m10s  kubelet            Pulling image "rancher/local-path-provisioner:v0.0.24"
++  Normal  Pulled     9m4s   kubelet            Successfully pulled image "rancher/local-path-provisioner:v0.0.24" in 5.832s (5.832s including waiting)
++  Normal  Created    9m4s   kubelet            Created container local-path-provisioner
++  Normal  Started    9m4s   kubelet            Started container local-path-provisioner
++
++
++Name:                 coredns-6799fbcd5-ptsvw
++Namespace:            kube-system
++Priority:             2000000000
++Priority Class Name:  system-cluster-critical
++Service Account:      coredns
++Node:                 mtl-w-4brym13/172.26.138.62
++Start Time:           Tue, 27 Feb 2024 11:14:07 -0700
++Labels:               k8s-app=kube-dns
++                      pod-template-hash=6799fbcd5
++Annotations:          <none>
++Status:               Running
++IP:                   10.42.0.4
++IPs:
++  IP:           10.42.0.4
++Controlled By:  ReplicaSet/coredns-6799fbcd5
++Containers:
++  coredns:
++    Container ID:  containerd://3eb4ed3e3e9513409cfa9699ed46d9ad8476da235062041689b9a9449cf56ca9
++    Image:         rancher/mirrored-coredns-coredns:1.10.1
++    Image ID:      docker.io/rancher/mirrored-coredns-coredns@sha256:a11fafae1f8037cbbd66c5afa40ba2423936b72b4fd50a7034a7e8b955163594
++    Ports:         53/UDP, 53/TCP, 9153/TCP
++    Host Ports:    0/UDP, 0/TCP, 0/TCP
++    Args:
++      -conf
++      /etc/coredns/Corefile
++    State:          Running
++      Started:      Tue, 27 Feb 2024 11:14:18 -0700
++    Ready:          True
++    Restart Count:  0
++    Limits:
++      memory:  170Mi
++    Requests:
++      cpu:        100m
++      memory:     70Mi
++    Liveness:     http-get http://:8080/health delay=60s timeout=1s period=10s #success=1 #failure=3
++    Readiness:    http-get http://:8181/ready delay=0s timeout=1s period=2s #success=1 #failure=3
++    Environment:  <none>
++    Mounts:
++      /etc/coredns from config-volume (ro)
++      /etc/coredns/custom from custom-config-volume (ro)
++      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-snh5x (ro)
++Conditions:
++  Type              Status
++  Initialized       True 
++  Ready             True 
++  ContainersReady   True 
++  PodScheduled      True 
++Volumes:
++  config-volume:
++    Type:      ConfigMap (a volume populated by a ConfigMap)
++    Name:      coredns
++    Optional:  false
++  custom-config-volume:
++    Type:      ConfigMap (a volume populated by a ConfigMap)
++    Name:      coredns-custom
++    Optional:  true
++  kube-api-access-snh5x:
++    Type:                     Projected (a volume that contains injected data from multiple sources)
++    TokenExpirationSeconds:   3607
++    ConfigMapName:            kube-root-ca.crt
++    ConfigMapOptional:        <nil>
++    DownwardAPI:              true
++QoS Class:                    Burstable
++Node-Selectors:               kubernetes.io/os=linux
++Tolerations:                  CriticalAddonsOnly op=Exists
++                              node-role.kubernetes.io/control-plane:NoSchedule op=Exists
++                              node-role.kubernetes.io/master:NoSchedule op=Exists
++                              node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
++                              node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
++Topology Spread Constraints:  kubernetes.io/hostname:DoNotSchedule when max skew 1 is exceeded for selector k8s-app=kube-dns
++Events:
++  Type    Reason     Age    From               Message
++  ----    ------     ----   ----               -------
++  Normal  Scheduled  9m12s  default-scheduler  Successfully assigned kube-system/coredns-6799fbcd5-ptsvw to mtl-w-4brym13
++  Normal  Pulling    9m10s  kubelet            Pulling image "rancher/mirrored-coredns-coredns:1.10.1"
++  Normal  Pulled     9m3s   kubelet            Successfully pulled image "rancher/mirrored-coredns-coredns:1.10.1" in 7.51s (7.51s including waiting)
++  Normal  Created    9m3s   kubelet            Created container coredns
++  Normal  Started    9m2s   kubelet            Started container coredns
++
++
++Name:             helm-install-traefik-crd-bwxnh
++Namespace:        kube-system
++Priority:         0
++Service Account:  helm-traefik-crd
++Node:             mtl-w-4brym13/172.26.138.62
++Start Time:       Tue, 27 Feb 2024 11:14:07 -0700
++Labels:           batch.kubernetes.io/controller-uid=9530b900-e7c7-47b6-ac35-509c0444fa2a
++                  batch.kubernetes.io/job-name=helm-install-traefik-crd
++                  controller-uid=9530b900-e7c7-47b6-ac35-509c0444fa2a
++                  helmcharts.helm.cattle.io/chart=traefik-crd
++                  job-name=helm-install-traefik-crd
++Annotations:      helmcharts.helm.cattle.io/configHash: SHA256=E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855
++Status:           Succeeded
++SeccompProfile:   RuntimeDefault
++IP:               10.42.0.2
++IPs:
++  IP:           10.42.0.2
++Controlled By:  Job/helm-install-traefik-crd
++Containers:
++  helm:
++    Container ID:  containerd://e087c190264b151c1628dc5db289d9d187ccc4ae94cf042887071efb38813ffc
++    Image:         rancher/klipper-helm:v0.8.2-build20230815
++    Image ID:      docker.io/rancher/klipper-helm@sha256:b0b0c4f73f2391697edb52adffe4fc490de1c8590606024515bb906b2813554a
++    Port:          <none>
++    Host Port:     <none>
++    Args:
++      install
++    State:      Terminated
++      Reason:   Completed
++      Message:  Installing helm_v3 chart
++
++      Exit Code:    0
++      Started:      Tue, 27 Feb 2024 11:14:22 -0700
++      Finished:     Tue, 27 Feb 2024 11:14:28 -0700
++    Ready:          False
++    Restart Count:  0
++    Environment:
++      NAME:                   traefik-crd
++      VERSION:                
++      REPO:                   
++      HELM_DRIVER:            secret
++      CHART_NAMESPACE:        kube-system
++      CHART:                  https://%{KUBERNETES_API}%/static/charts/traefik-crd-25.0.2+up25.0.0.tgz
++      HELM_VERSION:           
++      TARGET_NAMESPACE:       kube-system
++      AUTH_PASS_CREDENTIALS:  false
++      NO_PROXY:               .svc,.cluster.local,10.42.0.0/16,10.43.0.0/16
++      FAILURE_POLICY:         reinstall
++    Mounts:
++      /chart from content (rw)
++      /config from values (rw)
++      /home/klipper-helm/.cache from klipper-cache (rw)
++      /home/klipper-helm/.config from klipper-config (rw)
++      /home/klipper-helm/.helm from klipper-helm (rw)
++      /tmp from tmp (rw)
++      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-4bvnm (ro)
++Conditions:
++  Type              Status
++  Initialized       True 
++  Ready             False 
++  ContainersReady   False 
++  PodScheduled      True 
++Volumes:
++  klipper-helm:
++    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
++    Medium:     Memory
++    SizeLimit:  <unset>
++  klipper-cache:
++    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
++    Medium:     Memory
++    SizeLimit:  <unset>
++  klipper-config:
++    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
++    Medium:     Memory
++    SizeLimit:  <unset>
++  tmp:
++    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
++    Medium:     Memory
++    SizeLimit:  <unset>
++  values:
++    Type:        Secret (a volume populated by a Secret)
++    SecretName:  chart-values-traefik-crd
++    Optional:    false
++  content:
++    Type:      ConfigMap (a volume populated by a ConfigMap)
++    Name:      chart-content-traefik-crd
++    Optional:  false
++  kube-api-access-4bvnm:
++    Type:                    Projected (a volume that contains injected data from multiple sources)
++    TokenExpirationSeconds:  3607
++    ConfigMapName:           kube-root-ca.crt
++    ConfigMapOptional:       <nil>
++    DownwardAPI:             true
++QoS Class:                   BestEffort
++Node-Selectors:              kubernetes.io/os=linux
++Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
++                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
++Events:
++  Type    Reason     Age    From               Message
++  ----    ------     ----   ----               -------
++  Normal  Scheduled  9m12s  default-scheduler  Successfully assigned kube-system/helm-install-traefik-crd-bwxnh to mtl-w-4brym13
++  Normal  Pulling    9m10s  kubelet            Pulling image "rancher/klipper-helm:v0.8.2-build20230815"
++  Normal  Pulled     8m59s  kubelet            Successfully pulled image "rancher/klipper-helm:v0.8.2-build20230815" in 11.538s (11.538s including waiting)
++  Normal  Created    8m59s  kubelet            Created container helm
++  Normal  Started    8m58s  kubelet            Started container helm
++
++
++Name:                 metrics-server-67c658944b-cwbnw
++Namespace:            kube-system
++Priority:             2000001000
++Priority Class Name:  system-node-critical
++Service Account:      metrics-server
++Node:                 mtl-w-4brym13/172.26.138.62
++Start Time:           Tue, 27 Feb 2024 11:14:07 -0700
++Labels:               k8s-app=metrics-server
++                      pod-template-hash=67c658944b
++Annotations:          <none>
++Status:               Running
++IP:                   10.42.0.6
++IPs:
++  IP:           10.42.0.6
++Controlled By:  ReplicaSet/metrics-server-67c658944b
++Containers:
++  metrics-server:
++    Container ID:  containerd://f2f008cebaa5f27b569d6581e2e7b0f6dac4560ab92009ea839a7f2307f14f03
++    Image:         rancher/mirrored-metrics-server:v0.6.3
++    Image ID:      docker.io/rancher/mirrored-metrics-server@sha256:c2dfd72bafd6406ed306d9fbd07f55c496b004293d13d3de88a4567eacc36558
++    Port:          10250/TCP
++    Host Port:     0/TCP
++    Args:
++      --cert-dir=/tmp
++      --secure-port=10250
++      --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
++      --kubelet-use-node-status-port
++      --metric-resolution=15s
++      --tls-cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305
++    State:          Running
++      Started:      Tue, 27 Feb 2024 11:14:19 -0700
++    Ready:          True
++    Restart Count:  0
++    Requests:
++      cpu:        100m
++      memory:     70Mi
++    Liveness:     http-get https://:https/livez delay=60s timeout=1s period=10s #success=1 #failure=3
++    Readiness:    http-get https://:https/readyz delay=0s timeout=1s period=2s #success=1 #failure=3
++    Environment:  <none>
++    Mounts:
++      /tmp from tmp-dir (rw)
++      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-m9ljg (ro)
++Conditions:
++  Type              Status
++  Initialized       True 
++  Ready             True 
++  ContainersReady   True 
++  PodScheduled      True 
++Volumes:
++  tmp-dir:
++    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
++    Medium:     
++    SizeLimit:  <unset>
++  kube-api-access-m9ljg:
++    Type:                    Projected (a volume that contains injected data from multiple sources)
++    TokenExpirationSeconds:  3607
++    ConfigMapName:           kube-root-ca.crt
++    ConfigMapOptional:       <nil>
++    DownwardAPI:             true
++QoS Class:                   Burstable
++Node-Selectors:              <none>
++Tolerations:                 CriticalAddonsOnly op=Exists
++                             node-role.kubernetes.io/control-plane:NoSchedule op=Exists
++                             node-role.kubernetes.io/master:NoSchedule op=Exists
++                             node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
++                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
++Events:
++  Type     Reason     Age                    From               Message
++  ----     ------     ----                   ----               -------
++  Normal   Scheduled  9m12s                  default-scheduler  Successfully assigned kube-system/metrics-server-67c658944b-cwbnw to mtl-w-4brym13
++  Normal   Pulling    9m10s                  kubelet            Pulling image "rancher/mirrored-metrics-server:v0.6.3"
++  Normal   Pulled     9m1s                   kubelet            Successfully pulled image "rancher/mirrored-metrics-server:v0.6.3" in 8.584s (8.584s including waiting)
++  Normal   Created    9m1s                   kubelet            Created container metrics-server
++  Normal   Started    9m1s                   kubelet            Started container metrics-server
++  Warning  Unhealthy  9m (x3 over 9m1s)      kubelet            Readiness probe failed: Get "https://10.42.0.6:10250/readyz": dial tcp 10.42.0.6:10250: connect: connection refused
++  Warning  Unhealthy  8m57s                  kubelet            Readiness probe failed: Get "https://10.42.0.6:10250/readyz": net/http: request canceled while waiting for connection (Client.Timeout exceeded while awaiting headers)
++  Warning  Unhealthy  8m42s (x8 over 8m56s)  kubelet            Readiness probe failed: HTTP probe failed with statuscode: 500
++
++
++Name:             helm-install-traefik-pbg2d
++Namespace:        kube-system
++Priority:         0
++Service Account:  helm-traefik
++Node:             mtl-w-4brym13/172.26.138.62
++Start Time:       Tue, 27 Feb 2024 11:14:07 -0700
++Labels:           batch.kubernetes.io/controller-uid=7cda5ef1-bf02-4a96-bf62-9d1b3e708d4e
++                  batch.kubernetes.io/job-name=helm-install-traefik
++                  controller-uid=7cda5ef1-bf02-4a96-bf62-9d1b3e708d4e
++                  helmcharts.helm.cattle.io/chart=traefik
++                  job-name=helm-install-traefik
++Annotations:      helmcharts.helm.cattle.io/configHash: SHA256=2C8876269AFB411F60BCDA289A1957C0126147D80F1B0AC6BD2C43C10FE296E9
++Status:           Succeeded
++SeccompProfile:   RuntimeDefault
++IP:               10.42.0.5
++IPs:
++  IP:           10.42.0.5
++Controlled By:  Job/helm-install-traefik
++Containers:
++  helm:
++    Container ID:  containerd://e032e85c83ee172eb19a78984e5f6e17d98a1b1963442e9b73a2628f36e3c9c9
++    Image:         rancher/klipper-helm:v0.8.2-build20230815
++    Image ID:      docker.io/rancher/klipper-helm@sha256:b0b0c4f73f2391697edb52adffe4fc490de1c8590606024515bb906b2813554a
++    Port:          <none>
++    Host Port:     <none>
++    Args:
++      install
++      --set-string
++      global.systemDefaultRegistry=
++    State:      Terminated
++      Reason:   Completed
++      Message:  Installing helm_v3 chart
++
++      Exit Code:    0
++      Started:      Tue, 27 Feb 2024 11:14:43 -0700
++      Finished:     Tue, 27 Feb 2024 11:14:46 -0700
++    Ready:          False
++    Restart Count:  2
++    Environment:
++      NAME:                   traefik
++      VERSION:                
++      REPO:                   
++      HELM_DRIVER:            secret
++      CHART_NAMESPACE:        kube-system
++      CHART:                  https://%{KUBERNETES_API}%/static/charts/traefik-25.0.2+up25.0.0.tgz
++      HELM_VERSION:           
++      TARGET_NAMESPACE:       kube-system
++      AUTH_PASS_CREDENTIALS:  false
++      NO_PROXY:               .svc,.cluster.local,10.42.0.0/16,10.43.0.0/16
++      FAILURE_POLICY:         reinstall
++    Mounts:
++      /chart from content (rw)
++      /config from values (rw)
++      /home/klipper-helm/.cache from klipper-cache (rw)
++      /home/klipper-helm/.config from klipper-config (rw)
++      /home/klipper-helm/.helm from klipper-helm (rw)
++      /tmp from tmp (rw)
++      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-7s2wb (ro)
++Conditions:
++  Type              Status
++  Initialized       True 
++  Ready             False 
++  ContainersReady   False 
++  PodScheduled      True 
++Volumes:
++  klipper-helm:
++    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
++    Medium:     Memory
++    SizeLimit:  <unset>
++  klipper-cache:
++    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
++    Medium:     Memory
++    SizeLimit:  <unset>
++  klipper-config:
++    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
++    Medium:     Memory
++    SizeLimit:  <unset>
++  tmp:
++    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
++    Medium:     Memory
++    SizeLimit:  <unset>
++  values:
++    Type:        Secret (a volume populated by a Secret)
++    SecretName:  chart-values-traefik
++    Optional:    false
++  content:
++    Type:      ConfigMap (a volume populated by a ConfigMap)
++    Name:      chart-content-traefik
++    Optional:  false
++  kube-api-access-7s2wb:
++    Type:                    Projected (a volume that contains injected data from multiple sources)
++    TokenExpirationSeconds:  3607
++    ConfigMapName:           kube-root-ca.crt
++    ConfigMapOptional:       <nil>
++    DownwardAPI:             true
++QoS Class:                   BestEffort
++Node-Selectors:              kubernetes.io/os=linux
++Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
++                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
++Events:
++  Type     Reason     Age                    From               Message
++  ----     ------     ----                   ----               -------
++  Normal   Scheduled  9m12s                  default-scheduler  Successfully assigned kube-system/helm-install-traefik-pbg2d to mtl-w-4brym13
++  Normal   Pulling    9m10s                  kubelet            Pulling image "rancher/klipper-helm:v0.8.2-build20230815"
++  Normal   Pulled     8m59s                  kubelet            Successfully pulled image "rancher/klipper-helm:v0.8.2-build20230815" in 11.38s (11.381s including waiting)
++  Warning  BackOff    8m52s                  kubelet            Back-off restarting failed container helm in pod helm-install-traefik-pbg2d_kube-system(0580dd46-892e-405e-9641-ad74ece7b981)
++  Normal   Pulled     8m37s (x2 over 8m55s)  kubelet            Container image "rancher/klipper-helm:v0.8.2-build20230815" already present on machine
++  Normal   Created    8m37s (x3 over 8m59s)  kubelet            Created container helm
++  Normal   Started    8m37s (x3 over 8m58s)  kubelet            Started container helm
++
++
++Name:             svclb-traefik-c42f2c04-chxbj
++Namespace:        kube-system
++Priority:         0
++Service Account:  svclb
++Node:             mtl-w-4brym13/172.26.138.62
++Start Time:       Tue, 27 Feb 2024 11:14:46 -0700
++Labels:           app=svclb-traefik-c42f2c04
++                  controller-revision-hash=749c84f7df
++                  pod-template-generation=1
++                  svccontroller.k3s.cattle.io/svcname=traefik
++                  svccontroller.k3s.cattle.io/svcnamespace=kube-system
++Annotations:      <none>
++Status:           Running
++IP:               10.42.0.7
++IPs:
++  IP:           10.42.0.7
++Controlled By:  DaemonSet/svclb-traefik-c42f2c04
++Containers:
++  lb-tcp-80:
++    Container ID:   containerd://245434d48d54bebc7d063944cd789c5eeb1a39bd5c212985a4130509256b1137
++    Image:          rancher/klipper-lb:v0.4.5
++    Image ID:       docker.io/rancher/klipper-lb@sha256:fa2257de248f46c303d0f39a8ebe8644ba5ac63d332c7d02bf6ee26a981243bc
++    Port:           80/TCP
++    Host Port:      80/TCP
++    State:          Running
++      Started:      Tue, 27 Feb 2024 11:14:51 -0700
++    Ready:          True
++    Restart Count:  0
++    Environment:
++      SRC_PORT:    80
++      SRC_RANGES:  0.0.0.0/0
++      DEST_PROTO:  TCP
++      DEST_PORT:   80
++      DEST_IPS:    10.43.132.65
++    Mounts:        <none>
++  lb-tcp-443:
++    Container ID:   containerd://2ee8184012c3d06c08ff597e7cd26755e9d07fc05b77938dd983993a475dbea2
++    Image:          rancher/klipper-lb:v0.4.5
++    Image ID:       docker.io/rancher/klipper-lb@sha256:fa2257de248f46c303d0f39a8ebe8644ba5ac63d332c7d02bf6ee26a981243bc
++    Port:           443/TCP
++    Host Port:      443/TCP
++    State:          Running
++      Started:      Tue, 27 Feb 2024 11:14:51 -0700
++    Ready:          True
++    Restart Count:  0
++    Environment:
++      SRC_PORT:    443
++      SRC_RANGES:  0.0.0.0/0
++      DEST_PROTO:  TCP
++      DEST_PORT:   443
++      DEST_IPS:    10.43.132.65
++    Mounts:        <none>
++Conditions:
++  Type              Status
++  Initialized       True 
++  Ready             True 
++  ContainersReady   True 
++  PodScheduled      True 
++Volumes:            <none>
++QoS Class:          BestEffort
++Node-Selectors:     <none>
++Tolerations:        CriticalAddonsOnly op=Exists
++                    node-role.kubernetes.io/control-plane:NoSchedule op=Exists
++                    node-role.kubernetes.io/master:NoSchedule op=Exists
++                    node.kubernetes.io/disk-pressure:NoSchedule op=Exists
++                    node.kubernetes.io/memory-pressure:NoSchedule op=Exists
++                    node.kubernetes.io/not-ready:NoExecute op=Exists
++                    node.kubernetes.io/pid-pressure:NoSchedule op=Exists
++                    node.kubernetes.io/unreachable:NoExecute op=Exists
++                    node.kubernetes.io/unschedulable:NoSchedule op=Exists
++Events:
++  Type    Reason     Age    From               Message
++  ----    ------     ----   ----               -------
++  Normal  Scheduled  8m33s  default-scheduler  Successfully assigned kube-system/svclb-traefik-c42f2c04-chxbj to mtl-w-4brym13
++  Normal  Pulling    8m33s  kubelet            Pulling image "rancher/klipper-lb:v0.4.5"
++  Normal  Pulled     8m30s  kubelet            Successfully pulled image "rancher/klipper-lb:v0.4.5" in 3.249s (3.249s including waiting)
++  Normal  Created    8m30s  kubelet            Created container lb-tcp-80
++  Normal  Started    8m29s  kubelet            Started container lb-tcp-80
++  Normal  Pulled     8m29s  kubelet            Container image "rancher/klipper-lb:v0.4.5" already present on machine
++  Normal  Created    8m29s  kubelet            Created container lb-tcp-443
++  Normal  Started    8m29s  kubelet            Started container lb-tcp-443
++
++
++Name:                 traefik-f4564c4f4-4xlbt
++Namespace:            kube-system
++Priority:             2000000000
++Priority Class Name:  system-cluster-critical
++Service Account:      traefik
++Node:                 mtl-w-4brym13/172.26.138.62
++Start Time:           Tue, 27 Feb 2024 11:14:46 -0700
++Labels:               app.kubernetes.io/instance=traefik-kube-system
++                      app.kubernetes.io/managed-by=Helm
++                      app.kubernetes.io/name=traefik
++                      helm.sh/chart=traefik-25.0.2_up25.0.0
++                      pod-template-hash=f4564c4f4
++Annotations:          prometheus.io/path: /metrics
++                      prometheus.io/port: 9100
++                      prometheus.io/scrape: true
++Status:               Running
++IP:                   10.42.0.8
++IPs:
++  IP:           10.42.0.8
++Controlled By:  ReplicaSet/traefik-f4564c4f4
++Containers:
++  traefik:
++    Container ID:  containerd://019a2af5eb21fda2cb230dc362cb778c305a6ca2d6ec915e74faf087ec02b966
++    Image:         rancher/mirrored-library-traefik:2.10.5
++    Image ID:      docker.io/rancher/mirrored-library-traefik@sha256:ca9c8fbe001070c546a75184e3fd7f08c3e47dfc1e89bff6fe2edd302accfaec
++    Ports:         9100/TCP, 9000/TCP, 8000/TCP, 8443/TCP
++    Host Ports:    0/TCP, 0/TCP, 0/TCP, 0/TCP
++    Args:
++      --global.checknewversion
++      --global.sendanonymoususage
++      --entrypoints.metrics.address=:9100/tcp
++      --entrypoints.traefik.address=:9000/tcp
++      --entrypoints.web.address=:8000/tcp
++      --entrypoints.websecure.address=:8443/tcp
++      --api.dashboard=true
++      --ping=true
++      --metrics.prometheus=true
++      --metrics.prometheus.entrypoint=metrics
++      --providers.kubernetescrd
++      --providers.kubernetesingress
++      --providers.kubernetesingress.ingressendpoint.publishedservice=kube-system/traefik
++      --entrypoints.websecure.http.tls=true
++    State:          Running
++      Started:      Tue, 27 Feb 2024 11:14:55 -0700
++    Ready:          True
++    Restart Count:  0
++    Liveness:       http-get http://:9000/ping delay=2s timeout=2s period=10s #success=1 #failure=3
++    Readiness:      http-get http://:9000/ping delay=2s timeout=2s period=10s #success=1 #failure=1
++    Environment:
++      POD_NAME:       traefik-f4564c4f4-4xlbt (v1:metadata.name)
++      POD_NAMESPACE:  kube-system (v1:metadata.namespace)
++    Mounts:
++      /data from data (rw)
++      /tmp from tmp (rw)
++      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-9qfv8 (ro)
++Conditions:
++  Type              Status
++  Initialized       True 
++  Ready             True 
++  ContainersReady   True 
++  PodScheduled      True 
++Volumes:
++  data:
++    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
++    Medium:     
++    SizeLimit:  <unset>
++  tmp:
++    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
++    Medium:     
++    SizeLimit:  <unset>
++  kube-api-access-9qfv8:
++    Type:                    Projected (a volume that contains injected data from multiple sources)
++    TokenExpirationSeconds:  3607
++    ConfigMapName:           kube-root-ca.crt
++    ConfigMapOptional:       <nil>
++    DownwardAPI:             true
++QoS Class:                   BestEffort
++Node-Selectors:              <none>
++Tolerations:                 CriticalAddonsOnly op=Exists
++                             node-role.kubernetes.io/control-plane:NoSchedule op=Exists
++                             node-role.kubernetes.io/master:NoSchedule op=Exists
++                             node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
++                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
++Events:
++  Type    Reason     Age    From               Message
++  ----    ------     ----   ----               -------
++  Normal  Scheduled  8m33s  default-scheduler  Successfully assigned kube-system/traefik-f4564c4f4-4xlbt to mtl-w-4brym13
++  Normal  Pulling    8m33s  kubelet            Pulling image "rancher/mirrored-library-traefik:2.10.5"
++  Normal  Pulled     8m26s  kubelet            Successfully pulled image "rancher/mirrored-library-traefik:2.10.5" in 7.527s (7.527s including waiting)
++  Normal  Created    8m25s  kubelet            Created container traefik
++  Normal  Started    8m25s  kubelet            Started container traefik
++
++
++Name:             bitcoin-price-app-69f9f994c9-9sgb9
++Namespace:        default
++Priority:         0
++Service Account:  default
++Node:             mtl-w-4brym13/172.26.138.62
++Start Time:       Tue, 27 Feb 2024 11:17:35 -0700
++Labels:           app=bitcoin-price-app
++                  pod-template-hash=69f9f994c9
++Annotations:      <none>
++Status:           Running
++IP:               10.42.0.9
++IPs:
++  IP:           10.42.0.9
++Controlled By:  ReplicaSet/bitcoin-price-app-69f9f994c9
++Containers:
++  bitcoin-price-container:
++    Container ID:   containerd://8215c42a6cace2fd16e3f77d8d23d5c1905c424c40761bfb0ab918413b1910ff
++    Image:          thomaslifedesign/bitcoin_exporter
++    Image ID:       docker.io/thomaslifedesign/bitcoin_exporter@sha256:d5bc08a35da3088280d18a90305a326fb0e37172d7e06cf3e16fe8f08fa85cf8
++    Port:           8000/TCP
++    Host Port:      0/TCP
++    State:          Running
++      Started:      Tue, 27 Feb 2024 11:17:44 -0700
++    Ready:          True
++    Restart Count:  0
++    Environment:    <none>
++    Mounts:
++      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-lq85h (ro)
++Conditions:
++  Type              Status
++  Initialized       True 
++  Ready             True 
++  ContainersReady   True 
++  PodScheduled      True 
++Volumes:
++  kube-api-access-lq85h:
++    Type:                    Projected (a volume that contains injected data from multiple sources)
++    TokenExpirationSeconds:  3607
++    ConfigMapName:           kube-root-ca.crt
++    ConfigMapOptional:       <nil>
++    DownwardAPI:             true
++QoS Class:                   BestEffort
++Node-Selectors:              <none>
++Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
++                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
++Events:
++  Type    Reason     Age    From               Message
++  ----    ------     ----   ----               -------
++  Normal  Scheduled  5m44s  default-scheduler  Successfully assigned default/bitcoin-price-app-69f9f994c9-9sgb9 to mtl-w-4brym13
++  Normal  Pulling    5m44s  kubelet            Pulling image "thomaslifedesign/bitcoin_exporter"
++  Normal  Pulled     5m36s  kubelet            Successfully pulled image "thomaslifedesign/bitcoin_exporter" in 8.704s (8.704s including waiting)
++  Normal  Created    5m36s  kubelet            Created container bitcoin-price-container
++  Normal  Started    5m36s  kubelet            Started container bitcoin-price-container
++
++
++Name:             prometheus-deployment-6454fcc569-86skt
++Namespace:        default
++Priority:         0
++Service Account:  default
++Node:             mtl-w-4brym13/172.26.138.62
++Start Time:       Tue, 27 Feb 2024 11:19:28 -0700
++Labels:           app=prometheus
++                  pod-template-hash=6454fcc569
++Annotations:      <none>
++Status:           Running
++IP:               10.42.0.10
++IPs:
++  IP:           10.42.0.10
++Controlled By:  ReplicaSet/prometheus-deployment-6454fcc569
++Containers:
++  prometheus:
++    Container ID:   containerd://51f85a14c8a88a0c16ed1ce6fb89a76e44d2a41694de558006493f24b55252aa
++    Image:          prom/prometheus:latest
++    Image ID:       docker.io/prom/prometheus@sha256:bc1794e85c9e00293351b967efa267ce6af1c824ac875a9d0c7ac84700a8b53e
++    Port:           9090/TCP
++    Host Port:      0/TCP
++    State:          Running
++      Started:      Tue, 27 Feb 2024 11:19:41 -0700
++    Ready:          True
++    Restart Count:  0
++    Environment:    <none>
++    Mounts:
++      /etc/prometheus from prometheus-config-volume (rw)
++      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-km928 (ro)
++Conditions:
++  Type              Status
++  Initialized       True 
++  Ready             True 
++  ContainersReady   True 
++  PodScheduled      True 
++Volumes:
++  prometheus-config-volume:
++    Type:      ConfigMap (a volume populated by a ConfigMap)
++    Name:      prometheus-config
++    Optional:  false
++  kube-api-access-km928:
++    Type:                    Projected (a volume that contains injected data from multiple sources)
++    TokenExpirationSeconds:  3607
++    ConfigMapName:           kube-root-ca.crt
++    ConfigMapOptional:       <nil>
++    DownwardAPI:             true
++QoS Class:                   BestEffort
++Node-Selectors:              <none>
++Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
++                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
++Events:
++  Type    Reason     Age    From               Message
++  ----    ------     ----   ----               -------
++  Normal  Scheduled  3m52s  default-scheduler  Successfully assigned default/prometheus-deployment-6454fcc569-86skt to mtl-w-4brym13
++  Normal  Pulling    3m52s  kubelet            Pulling image "prom/prometheus:latest"
++  Normal  Pulled     3m40s  kubelet            Successfully pulled image "prom/prometheus:latest" in 12.194s (12.194s including waiting)
++  Normal  Created    3m39s  kubelet            Created container prometheus
++  Normal  Started    3m39s  kubelet            Started container prometheus
+diff --git a/submit/hiring-test-root/prometheus-bitcoin-metric.json b/submit/hiring-test-root/prometheus-bitcoin-metric.json
+new file mode 100644
+index 0000000..f1f0f0f
+--- /dev/null
++++ b/submit/hiring-test-root/prometheus-bitcoin-metric.json
+@@ -0,0 +1 @@
++{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"bitcoin_price","instance":"bitcoin-price-service:8000","job":"bitcoin-exporter"},"value":[1709058200.304,"57053.3345"]}]}}
+\ No newline at end of file
+diff --git a/submit/hiring-test-root/prometheus-random-metric.json b/submit/hiring-test-root/prometheus-random-metric.json
+new file mode 100644
+index 0000000..db9d606
+--- /dev/null
++++ b/submit/hiring-test-root/prometheus-random-metric.json
+@@ -0,0 +1 @@
++{"status":"success","data":{"resultType":"vector","result":[]}}
+\ No newline at end of file
+diff --git a/submit/submit.sh b/submit/submit.sh
+new file mode 100644
+index 0000000..c8f7540
+--- /dev/null
++++ b/submit/submit.sh
+@@ -0,0 +1,19 @@
++#!/bin/bash
++set -e
++
++dir_name="hiring-test-$(whoami)"
++mkdir -p $dir_name
++
++#git format-patch --stdout $(git rev-list --max-parents=0 HEAD)..HEAD > ${dir_name}/git-changes.patch
++kubectl describe deployments -A > ${dir_name}/kubectl-deployments.txt
++kubectl describe pods -A > ${dir_name}/kubectl-pods.txt
++curl -sG http://localhost/api/v1/query --data-urlencode "query=bitcoin_price" > ${dir_name}/prometheus-bitcoin-metric.json
++curl -sG http://localhost/api/v1/query --data-urlencode "query=node_boot_time_seconds" > ${dir_name}/prometheus-random-metric.json
++
++tar -czf ${dir_name}.tar.gz $dir_name
++rm -rf $dir_name
++
++echo 'Thank you for completing our hiring test!'
++echo
++echo "Please send us your results: ${dir_name}.tar.gz"
++
+-- 
+2.34.1
+
