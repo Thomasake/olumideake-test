@@ -4,7 +4,7 @@ set -e
 dir_name="hiring-test-$(whoami)"
 mkdir -p $dir_name
 
-#git format-patch --stdout $(git rev-list --max-parents=0 HEAD)..HEAD > ${dir_name}/git-changes.patch
+git format-patch --stdout $(git rev-list --max-parents=0 HEAD)..HEAD > ${dir_name}/git-changes.patch
 kubectl describe deployments -A > ${dir_name}/kubectl-deployments.txt
 kubectl describe pods -A > ${dir_name}/kubectl-pods.txt
 curl -sG http://localhost/api/v1/query --data-urlencode "query=bitcoin_price" > ${dir_name}/prometheus-bitcoin-metric.json
